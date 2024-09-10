@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>更新个人信息</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+        }
+        .container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        .form-group button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .form-group button:hover {
+            background-color: #45a049;
+        }
+        h1 {
+            text-align: center; 
+            margin-bottom: 2rem; 
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>更新个人信息</h1>
+    <form id="updateForm" class="form-group">
+        <label for="newWeight">体重（kg）</label>
+        <input type="number" id="newWeight" name="newWeight" required>
+        
+        <label for="newHeight">身高（cm）</label>
+        <input type="number" id="newHeight" name="newHeight" required>
+
+        <label for="new_laborIntensity">劳动强度</label>
+        <select id="new_laborIntensity" name="new_laborIntensity" required>
+            <option value="brain-domain">脑力为主</option>
+            <option value="labor-domain">体力为主</option>
+            <option value="half">轻度劳动</option>
+        </select>
+
+        <button type="button" onclick="updateUserInfo()">更新信息</button>
+    </form>
+</div>
+
+<script>
+
+    async function updateUserInfo(userId) {
+        try {
+            const currentUserId = localStorage.getItem('user_id'); 
+            if (!currentUserId) {
+            alert('用户ID未找到，请重新登录。');
+            return;
+            }
+            const newWeight = document.getElementById('newWeight').value;
+            const newHeight = document.getElementById('newHeight').value;
+            const new_laborIntensity = document.getElementById('new_laborIntensity').value;
+            const response = await fetch(`http://127.0.0.1:5000/update_user_info/${currentUserId}`, { // 使用反引号
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: currentUserId,
+                    weight: newWeight,
+                    height: newHeight,
+                    laborIntensity: new_laborIntensity
+                })
+            });
+
+            console.log('Request body:', {
+                user_id: currentUserId,
+                weight: newWeight,
+                height: newHeight,
+                laborIntensity: new_laborIntensity
+            });
+
+            if (response.ok) {
+                alert('信息更新成功！');
+                // 跳转回仪表盘页面
+                window.location.href = 'dashboard.html';
+            } else {
+                const error = await response.json();
+                alert('更新失败：' + error.message);
+            }
+        } catch (error) {
+            console.error('更新个人信息时出现错误:', error);
+            alert('更新失败，请重试。');
+        }
+    }
+</script>
+
+</body>
+</html>

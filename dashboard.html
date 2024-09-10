@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户仪表盘</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        .form-group button {
+            width: 32%; /* Adjusted width to accommodate three buttons */
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+            margin-right: 2%; /* Add some spacing between buttons */
+        }
+        .form-group button:last-child {
+            margin-right: 0; /* Remove the margin from the last button */
+        }
+        .form-group button:hover {
+            background-color: #45a049;
+        }
+        h1, h2 {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        #buttonContainer {
+            text-align: center; /* Center the button container */
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #f4f4f9;
+        }
+
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>用户饮食管理</h1>
+
+    <div id="dashboard">
+        <p>应摄入卡路里：<span id="targetCalories">0</span></p>
+        <p>BMI：<span id="bmi">0</span></p>
+        <p>体重：<span id="currentWeight">0</span></p>
+        <ul id="recipeList"></ul>
+        <div id="buttonContainer">
+            <button onclick="showAddFoodLogForm()">添加饮食记录</button>
+            <button onclick="showQueryFoodLogForm()">查询饮食记录</button>
+            <button onclick="window.location.href='updateProfile.html'">更新个人信息</button>
+            <button onclick="logout()">返回登录界面</button>
+        </div>
+        <h3>今日饮食记录</h3>
+        <table id="todayFoodLog">
+            <thead>
+                <tr>
+                    <th>餐次</th>
+                    <th>食物项</th>
+                    <th>卡路里(kcal)</th>
+                    <th>蛋白质(g)</th>
+                    <th>碳水(g)</th>
+                    <th>脂肪(g)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="6">暂无</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 查询饮食记录 -->
+    <form id="queryFoodLogForm" class="form-group" style="display: none;">
+        <h2>查询饮食记录</h2>
+        <label for="queryDate">日期</label>
+        <input type="date" id="queryDate" name="queryDate" required>
+        <button type="button" onclick="queryFoodLog()">查询</button>
+        <ul id="queryResults"></ul>
+    </form>
+
+    <!-- 添加饮食记录 -->
+    <form id="addFoodLogForm" class="form-group" style="display: none;">
+        <h2>添加饮食记录</h2>
+        <label for="date">日期</label>
+        <input type="date" id="date" name="date" required>
+        <label for="meal">餐次</label>
+        <input type="number" id="meal" name="meal" required>
+        <label for="foodItem">食物项</label>
+        <input type="text" id="foodItem" name="foodItem" required>
+        <label for="calories">卡路里（kcal）</label>
+        <input type="number" id="calories" name="calories" required>
+        <label for="protein">蛋白质（g）</label>
+        <input type="number" id="protein" name="protein" required>
+        <label for="carbs">碳水化合物（g）</label>
+        <input type="number" id="carbs" name="carbs" required>
+        <label for="fats">脂肪（g）</label>
+        <input type="number" id="fats" name="fats" required>
+        <button type="button" onclick="addFoodLog()">提交饮食记录</button>
+    </form>
+</div>
+
+<script>
+    let currentUserId = localStorage.getItem('user_id');
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (!currentUserId) {
+            alert('请先登录');
+            window.location.href = 'index.html';
+            return;
+        }
+        await getUserIntake(currentUserId);
+        setDefaultDate();
+        await loadTodayFoodLog(); 
+    });
+
+    function setDefaultDate() {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('date').value = today;
+        document.getElementById('queryDate').value = today;
+    }
+    
+    function logout() {
+        localStorage.removeItem('user_id');
+        window.location.href = 'index.html';
+    }
+
+    async function getUserIntake(userId) {
+        try {
+            const response = await fetch(`http://127.0.0.1:5000/user_intake/${userId}`);
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Received data:', data);
+                document.getElementById('targetCalories').innerText = `${data.target_calories} kcal`;
+                document.getElementById('bmi').innerText = `${data.bmi}`;
+                document.getElementById('currentWeight').innerText = `${data.weight} kg`;
+            } else {
+                alert('获取用户信息失败');
+            }
+        } catch (error) {
+            console.error('获取用户信息时出现错误:', error);
+        }
+    }
+
+    function showAddFoodLogForm() {
+        document.getElementById('addFoodLogForm').style.display = 'block';
+        document.getElementById('queryFoodLogForm').style.display = 'none'; 
+    }
+
+    function showQueryFoodLogForm() {
+        document.getElementById('queryFoodLogForm').style.display = 'block';
+        document.getElementById('addFoodLogForm').style.display = 'none'; 
+    }
+
+    async function addFoodLog() {
+        try {
+            const date = document.getElementById('date').value;
+            const meal = parseInt(document.getElementById('meal').value);
+            const foodItem = document.getElementById('foodItem').value;
+            const calories = parseFloat(document.getElementById('calories').value);
+            const protein = parseFloat(document.getElementById('protein').value);
+            const carbs = parseFloat(document.getElementById('carbs').value);
+            const fats = parseFloat(document.getElementById('fats').value);
+
+            const response = await fetch('http://127.0.0.1:5000/add_food_log', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: currentUserId,
+                    date: date,
+                    meal: meal,
+                    food_item: foodItem,
+                    calories: calories,
+                    protein: protein,
+                    carbs: carbs,
+                    fats: fats
+                })
+            });
+
+            if (response.ok) {
+                alert('饮食记录添加成功');
+                document.getElementById('addFoodLogForm').reset();
+                await loadTodayFoodLog(); // Refresh today's food log
+            } else {
+                alert('添加饮食记录失败');
+            }
+        } catch (error) {
+            console.error('添加饮食记录时出现错误:', error);
+        }
+    }
+
+    async function queryFoodLog() {
+        try {
+            const queryDate = document.getElementById('queryDate').value;
+            const response = await fetch(`http://127.0.0.1:5000/query_food_log?user_id=${currentUserId}&date=${queryDate}`);
+            if (response.ok) {
+                const data = await response.json();
+                const queryResults = document.getElementById('queryResults');
+                queryResults.innerHTML = ''; // Clear previous query results
+
+                // Sort results by meal number
+                data.food_logs.sort((a, b) => a.meal - b.meal);
+
+                if (data.food_logs.length > 0) {
+                    data.food_logs.forEach(log => {
+                        const li = document.createElement('li');
+                        li.innerHTML = `${log.meal} - ${log.food_item}: 卡路里 ${log.calories}kcal, 蛋白质 ${log.protein}g, 碳水化合物 ${log.carbs}g, 脂肪 ${log.fats}g <button onclick="deleteFoodLog(${log.id})">删除</button>`;
+                        queryResults.appendChild(li);
+                    });
+                } else {
+                    queryResults.innerHTML = '<li>没有查询到相关记录</li>';
+                }
+            } else {
+                alert('查询饮食记录失败');
+            }
+        } catch (error) {
+            console.error('查询饮食记录时出现错误:', error);
+        }
+    }
+
+    async function deleteFoodLog(logId) {
+        try {
+            const response = await fetch(`http://127.0.0.1:5000/delete_food_log/${logId}`, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                alert('饮食记录删除成功');
+                await queryFoodLog(); // Refresh the query results
+                await loadTodayFoodLog(); // Refresh today's food log
+            } else {
+                alert('删除饮食记录失败');
+            }
+        } catch (error) {
+            console.error('删除饮食记录时出现错误:', error);
+        }
+    }
+
+    async function loadTodayFoodLog() {
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const response = await fetch(`http://127.0.0.1:5000/query_food_log?user_id=${currentUserId}&date=${today}`);
+            if (response.ok) {
+                const data = await response.json();
+                const tbody = document.getElementById('todayFoodLog').querySelector('tbody');
+                tbody.innerHTML = ''; // Clear previous log
+
+                if (data.food_logs.length > 0) {
+                    data.food_logs.forEach(log => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td>${log.meal}</td><td>${log.food_item}</td><td>${log.calories}</td><td>${log.protein}</td><td>${log.carbs}</td><td>${log.fats}</td>`;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="6">暂无</td></tr>';
+                }
+            } else {
+                alert('加载今日饮食记录失败');
+            }
+        } catch (error) {
+            console.error('加载今日饮食记录时出现错误:', error);
+        }
+    }
+</script>
+</body>
+</html>

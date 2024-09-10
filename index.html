@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>饮食记录管理系统</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+        }
+        .container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        .form-group button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .form-group button:hover {
+            background-color: #45a049;
+        }
+        .link {
+            display: block;
+            text-align: center;
+            margin-top: 10px;
+            color: #4CAF50;
+            text-decoration: none;
+        }
+        .link:hover {
+            text-decoration: underline;
+        }
+        h1,h2 {
+            text-align: center; 
+            margin-bottom: 2rem; 
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>饮食记录管理系统</h1>
+
+    <!-- 登录表单 -->
+    <form id="loginForm" class="form-group">
+        <h2>登录界面</h2>
+        <label for="loginUsername">用户名</label>
+        <input type="text" id="loginUsername" name="username" required>
+        <label for="loginPassword">密码</label>
+        <input type="password" id="loginPassword" name="password" required>
+        <button type="button" onclick="login()">登录</button>
+        <button type="button" onclick="showRegisterForm()">注册</button>
+        <a href="#" class="link" onclick="showForgotPasswordForm()">忘记密码?</a>
+    </form>
+
+    <!-- 注册表单 -->
+    <form id="registerForm" class="form-group" style="display: none;">
+        <h2>注册</h2>
+        <label for="regUsername">用户名</label>
+        <input type="text" id="regUsername" name="regUsername" required>
+        <label for="regPassword">密码</label>
+        <input type="password" id="regPassword" name="regPassword" required>
+        <label for="regEmail">注册邮箱</label>
+        <input type="email" id="regEmail" name="regEmail" required>
+        <label for="name">姓名</label>
+        <input type="text" id="name" name="name" required>
+        <label for="gender">性别</label>
+        <select id="gender" name="gender" required>
+            <option value="female">女</option>
+            <option value="male">男</option>
+        </select>
+        <label for="weight">体重（kg）</label>
+        <input type="number" id="weight" name="weight" required>
+        <label for="height">身高（cm）</label>
+        <input type="number" id="height" name="height" required>
+        <label for="laborIntensity">每日劳动强度</label>
+        <select id="laborIntensity" name="laborIntensity" required>
+            <option value="brain-domain">脑力为主</option>
+            <option value="labor-domain">体力为主</option>
+            <option value="half">轻度劳动</option>
+        </select>
+        <button type="button" onclick="register()">注册</button>
+        <button type="button" onclick="hideRegisterForm()">返回登录</button>
+    </form>
+
+    <!-- 忘记密码表单 -->
+    <form id="forgotPasswordForm" class="form-group" style="display: none;">
+        <h2>重置密码</h2>
+        <label for="email">请输入注册邮箱</label>
+        <input type="email" id="email" name="email" required>
+        <button type="button" onclick="forgotPassword()">发送重置链接</button>
+        <button type="button" onclick="hideForgotPasswordForm()">返回登录</button>
+    </form>
+
+</div>
+
+<script>
+    let currentUserId = null;
+
+    function showRegisterForm() {
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('registerForm').style.display = 'block';
+    }
+
+    function hideRegisterForm() {
+        document.getElementById('registerForm').style.display = 'none';
+        document.getElementById('loginForm').style.display = 'block';
+    }
+
+    function showForgotPasswordForm() {
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('forgotPasswordForm').style.display = 'block';
+    }
+
+    function hideForgotPasswordForm() {
+        document.getElementById('forgotPasswordForm').style.display = 'none';
+        document.getElementById('loginForm').style.display = 'block';
+    }
+
+    async function register() {
+        try {
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('regEmail').value;
+            const gender = document.getElementById('gender').value;
+            const weight = document.getElementById('weight').value;
+            const height = document.getElementById('height').value;
+            const laborIntensity = document.getElementById('laborIntensity').value;
+
+            const response = await fetch('http://127.0.0.1:5000/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password, name, gender, weight, height, laborIntensity })
+            });
+
+            if (response.ok) {
+                alert('注册成功，请登录！');
+                document.getElementById('registerForm').reset();
+                hideRegisterForm();
+            } else {
+                const error = await response.json();
+                alert('注册失败：' + error.message);
+            }
+        } catch (error) {
+            console.error('注册时出现错误:', error);
+            alert('注册失败，请重试。');
+        }
+    }
+
+    async function login() {
+        try {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
+            const response = await fetch('http://127.0.0.1:5000/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                localStorage.setItem('user_id', data.user_id); 
+                currentUserId = data.user_id;
+                alert('登录成功！');
+                window.location.href = 'dashboard.html'; // 重定向到仪表盘页面
+            } else {
+                const error = await response.json();
+                alert('登录失败：' + error.message);
+            }
+        } catch (error) {
+            console.error('登录时出现错误:', error);
+            alert('登录失败，请重试。');
+        }
+    }
+
+    async function forgotPassword() {
+        try {
+            const email = document.getElementById('email').value;
+            const response = await fetch('http://127.0.0.1:5000/forgot_password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+
+            if (response.ok) {
+                alert('重置链接已发送到您的邮箱，请查收。');
+                document.getElementById('forgotPasswordForm').reset();
+                hideForgotPasswordForm();
+            } else {
+                const error = await response.json();
+                alert('重置密码失败：' + error.message);
+            }
+        } catch (error) {
+            console.error('重置密码时出现错误:', error);
+            alert('重置密码失败，请重试。');
+        }
+    }
+</script>
+
+</body>
+</html>
