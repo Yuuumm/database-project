@@ -5,9 +5,18 @@ from flask_cors import CORS
 import re
 import logging
 from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]}}, supports_credentials=True)
+CORS(app, supports_credentials=True)
+# CORS(app)  # 允许所有请求跨域
+
+@app.after_request
+def after_request(response):
+    response.headers["Access-Control-Allow-Origin"] = "http://localhost:5174"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    return response
 
 # 配置 MySQL 数据库
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://nutrition_user:179100@localhost/nutrition_db'
@@ -47,6 +56,19 @@ class FoodLog(db.Model):
     protein = db.Column(db.Float, nullable=False)
     carbs = db.Column(db.Float, nullable=False)
     fats = db.Column(db.Float, nullable=False)
+    fiber = db.Column(db.Float, nullable=False)
+    
+# 健康日志模型
+class HealthLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    weight = db.Column(db.Float, nullable=False)
+    mood = db.Column(db.String(50), nullable=True)
+    sleep_start = db.Column(db.Time, nullable=True)
+    sleep_end = db.Column(db.Time, nullable=True)
+    sleep_hours = db.Column(db.Float, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
 
 # 初始化数据库
 with app.app_context():
@@ -129,54 +151,74 @@ def login():
         logger.error(f"Error during login: {e}")  # 打印详细错误信息
         return jsonify({'message': '服务器错误，请重试。'}), 500
 
+# 获取用户信息  
+@app.route('/user/<int:user_id>', methods=['GET'])
+def get_user_info(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'message': '用户未找到'}), 404
+        
+    return jsonify({
+        'id': user.id,
+        'username': user.username,
+        'name': user.name,
+        'email': user.email,
+        'gender': user.gender,
+        'weight': user.weight,
+        'height': user.height,
+        'labor_intensity': user.labor_intensity
+    }), 200
+    
 # 添加饮食记录
 @app.route('/add_food_log', methods=['POST'])
 def add_food_log():
     try:
         data = request.get_json()
+        logger.info(f"Received food log data: {data}")  # 添加日志记录
         
         # 验证必要的字段是否存在
-        required_fields = ['user_id', 'date', 'meal', 'food_item', 'calories', 'protein', 'carbs', 'fats']
+        required_fields = ['user_id', 'date', 'meal', 'food_item', 'calories', 'protein', 'carbs', 'fats', 'fiber']
         for field in required_fields:
             if field not in data:
+                logger.error(f"Missing required field: {field}")  # 添加错误日志
                 return jsonify({'message': f'缺少必要字段: {field}'}), 400
-
-        # 验证用户是否存在
-        user = User.query.get(data['user_id'])
-        if not user:
-            return jsonify({'message': '用户不存在'}), 404
 
         # 创建食物日志记录
         food_log = FoodLog(
             user_id=data['user_id'],
-            date=data['date'],  # 保存日期信息
+            date=data['date'],
             meal=data['meal'],
             food_item=data['food_item'],
             calories=float(data['calories']),
             protein=float(data['protein']),
             carbs=float(data['carbs']),
-            fats=float(data['fats'])
+            fats=float(data['fats']),
+            fiber=float(data['fiber'])
         )
 
-        # 添加到数据库
         db.session.add(food_log)
         db.session.commit()
+        logger.info("Food log added successfully")  # 添加成功日志
 
-        return jsonify({'message': '饮食记录已添加', 'food_log_id': food_log.id}), 201
-
-    except ValueError as ve:
-        logger.error(f"Invalid data format: {ve}")
-        return jsonify({'message': '数据格式无效，请确保所有数值字段为数字'}), 400
-
-    except SQLAlchemyError as e:
-        logger.error(f"Database error while adding food log: {e}")
-        db.session.rollback()
-        return jsonify({'message': '数据库错误，添加饮食记录失败'}), 500
+        return jsonify({
+            'status': 'success',
+            'message': '饮食记录已添加',
+            'food_log': {
+                'id': food_log.id,
+                'meal': food_log.meal,
+                'food_item': food_log.food_item,
+                'calories': food_log.calories,
+                'protein': food_log.protein,
+                'carbs': food_log.carbs,
+                'fats': food_log.fats,
+                'fiber': food_log.fiber
+            }
+        }), 201
 
     except Exception as e:
-        logger.error(f"Unexpected error adding food log: {e}")
+        logger.error(f"Error adding food log: {str(e)}")  # 添加错误日志
         db.session.rollback()
-        return jsonify({'message': '添加饮食记录失败，请重试'}), 500
+        return jsonify({'message': f'添加饮食记录失败: {str(e)}'}), 500
 
 # 查询饮食记录
 @app.route('/query_food_log', methods=['GET'])
@@ -201,7 +243,8 @@ def query_food_log():
             'calories': log.calories,
             'protein': log.protein,
             'carbs': log.carbs,
-            'fats': log.fats
+            'fats': log.fats,
+            'fiber': log.fiber
         } for log in food_logs]
 
         return jsonify({'food_logs': food_logs_data}), 200
@@ -270,45 +313,217 @@ def update_user(user_id):
         return jsonify({'message': '用户信息更新失败，请重试'}), 500
 
 
-# 计算摄入和BMI
 @app.route('/user_intake/<int:user_id>', methods=['GET'])
 def get_user_intake(user_id):
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({'message': '用户未找到'}), 404
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'message': '用户未找到'}), 404
 
-    # 计算基础代谢率 (BMR)————假设年龄为25
-    if user.gender == 'male':
-        bmr = 88.362 + (13.397 * user.weight) + (4.799 * user.height) - (5.677 * 25)  
-    else:
-        bmr = 447.593 + (9.247 * user.weight) + (3.098 * user.height) - (4.330 * 25)  
+        # 获取今天的日期
+        today = datetime.now().date()
+        
+        # 计算基础代谢率 (BMR)
+        height_meters = user.height / 100  # 转换为米
+        if user.gender == 'male':
+            bmr = 88.362 + (13.397 * user.weight) + (4.799 * user.height) - (5.677 * 25)
+        else:
+            bmr = 447.593 + (9.247 * user.weight) + (3.098 * user.height) - (4.330 * 25)
 
-    # 根据用户劳动强度调整 BMR
-    if user.labor_intensity == 'brain-domain':
-        bmr *= 1.2
-    elif user.labor_intensity == 'labor-domain':
-        bmr *= 1.75
-    else:
-        bmr *= 1.55
+        # 根据劳动强度调整BMR
+        activity_factors = {
+            'brain-domain': 1.2,  # 脑力劳动
+            'labor-domain': 1.75, # 体力劳动
+            'normal': 1.55        # 普通活动
+        }
+        activity_factor = activity_factors.get(user.labor_intensity, 1.55)
+        target_calories = bmr * activity_factor
 
-    # 计算总卡路里摄入
-    total_calories_consumed = sum(
-        [log.calories for log in FoodLog.query.filter_by(user_id=user_id).all()]
-    )
+        # 计算今日卡路里摄入
+        today_logs = FoodLog.query.filter_by(
+            user_id=user_id,
+            date=today
+        ).all()
+        
+        consumed_calories = sum(log.calories for log in today_logs)
+        logger.info(f"User {user_id} stats: target_calories={target_calories}, consumed_calories={consumed_calories}")
 
-    # 应摄入卡路里
-    target_calories = bmr
+        # 计算BMI
+        bmi = user.weight / (height_meters ** 2)
 
-    # 计算BMI
-    height_meters = user.height / 100  # height 以厘米为单位
-    bmi = user.weight / (height_meters ** 2)
-    current_weight = user.weight / 1
+        return jsonify({
+            'target_calories': round(target_calories, 2),
+            'consumed_calories': round(consumed_calories, 2),
+            'bmi': round(bmi, 2),
+            'weight': round(user.weight, 1),
+            'height': user.height,
+            'gender': user.gender,
+            'labor_intensity': user.labor_intensity
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error calculating user intake: {str(e)}")
+        return jsonify({'message': f'计算失败: {str(e)}'}), 500
 
-    return jsonify({
-        'target_calories': round(target_calories, 2),
-        'bmi': round(bmi, 2),
-        'weight': round(current_weight, 1)
-    }), 200
+# 添加健康日志
+@app.route('/add_health_log', methods=['POST'])
+def add_health_log():
+    try:
+        data = request.get_json()
+        logger.info(f"Received health log data: {data}")  # 添加日志
+        
+        # 验证必要字段
+        required_fields = ['user_id', 'date', 'weight']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'message': f'缺少必要字段: {field}'}), 400
+        
+        # 验证用户是否存在
+        user = User.query.get(data['user_id'])
+        if not user:
+            return jsonify({'message': '用户不存在'}), 404
+        
+        # 检查是否已有当天记录
+        existing_log = HealthLog.query.filter_by(
+            user_id=data['user_id'], 
+            date=data['date']
+        ).first()
+        
+        try:
+            if existing_log:
+                # 更新现有记录
+                existing_log.weight = float(data['weight'])
+                existing_log.mood = data.get('mood')
+                existing_log.sleep_start = data.get('sleep_start')
+                existing_log.sleep_end = data.get('sleep_end')
+                existing_log.sleep_hours = float(data.get('sleep_hours', 0))
+                existing_log.notes = data.get('notes')
+                health_log_id = existing_log.id
+            else:
+                # 创建新记录
+                health_log = HealthLog(
+                    user_id=data['user_id'],
+                    date=data['date'],
+                    weight=float(data['weight']),
+                    mood=data.get('mood'),
+                    sleep_start=data.get('sleep_start'),
+                    sleep_end=data.get('sleep_end'),
+                    sleep_hours=float(data.get('sleep_hours', 0)),
+                    notes=data.get('notes')
+                )
+                db.session.add(health_log)
+                health_log_id = health_log.id
+            
+            db.session.commit()
+            
+            return jsonify({
+                'status': 'success',
+                'message': '健康日志已保存',
+                'health_log_id': health_log_id
+            }), 201
+            
+        except ValueError as ve:
+            db.session.rollback()
+            return jsonify({'message': f'数据格式无效: {str(ve)}'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error adding health log: {str(e)}")
+        db.session.rollback()
+        return jsonify({'message': f'添加健康日志失败: {str(e)}'}), 500
+    
+# 获取健康日志
+@app.route('/get_health_log', methods=['GET'])
+def get_health_log():
+    try:
+        user_id = request.args.get('user_id')
+        date = request.args.get('date')
+        
+        if not user_id:
+            return jsonify({'message': '缺少用户ID'}), 400
+            
+        # 验证用户是否存在
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'message': '用户不存在'}), 404
+            
+        query = HealthLog.query.filter_by(user_id=user_id)
+        
+        if date:
+            # 获取特定日期的日志
+            log = query.filter_by(date=date).first()
+            if not log:
+                return jsonify({'health_log': None}), 200
+                
+            log_data = {
+                'id': log.id,
+                'date': log.date.isoformat(),
+                'weight': log.weight,
+                'mood': log.mood,
+                'sleep_start': log.sleep_start.isoformat() if log.sleep_start else None,
+                'sleep_end': log.sleep_end.isoformat() if log.sleep_end else None,
+                'sleep_hours': log.sleep_hours,
+                'notes': log.notes
+            }
+            return jsonify({'health_log': log_data}), 200
+        else:
+            # 获取所有日志
+            logs = query.order_by(HealthLog.date.desc()).all()
+            logs_data = [{
+                'id': log.id,
+                'date': log.date.isoformat(),
+                'weight': log.weight,
+                'mood': log.mood,
+                'sleep_start': log.sleep_start.isoformat() if log.sleep_start else None,
+                'sleep_end': log.sleep_end.isoformat() if log.sleep_end else None,
+                'sleep_hours': log.sleep_hours,
+                'notes': log.notes
+            } for log in logs]
+            return jsonify({'health_logs': logs_data}), 200
+            
+    except Exception as e:
+        return jsonify({'message': f'获取健康日志失败: {str(e)}'}), 500
+
+# 更新饮食记录
+@app.route('/update_food_log/<int:log_id>', methods=['PUT'])
+def update_food_log(log_id):
+    try:
+        food_log = FoodLog.query.get(log_id)
+        
+        # 验证食物日志是否存在
+        if not food_log:
+            return jsonify({'message': '饮食记录未找到'}), 404
+            
+        # 获取更新数据
+        data = request.get_json()
+        
+        # 更新字段
+        if 'meal' in data:
+            food_log.meal = data['meal']
+        if 'food_item' in data:
+            food_log.food_item = data['food_item']
+        if 'calories' in data:
+            food_log.calories = float(data['calories'])
+        if 'protein' in data:
+            food_log.protein = float(data['protein'])
+        if 'carbs' in data:
+            food_log.carbs = float(data['carbs'])
+        if 'fats' in data:
+            food_log.fats = float(data['fats'])
+        if 'fiber' in data:
+            food_log.fiber = float(data['fiber'])
+            
+        # 保存更新
+        db.session.commit()
+        
+        return jsonify({'message': '饮食记录已更新'}), 200
+        
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'message': f'数据格式无效: {str(e)}'}), 400
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'更新饮食记录失败: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
